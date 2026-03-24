@@ -30,10 +30,12 @@
 
     body {
       font-family: 'Sora', sans-serif;
+      font-size: 16px;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
       line-height: 1.6;
+      padding-bottom: 48px;
     }
 
     /* ── HEADER ── */
@@ -742,6 +744,28 @@
       border-radius: 3px;
     }
 
+    /* ── FOOTER ── */
+    .site-footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 99;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 8px 24px;
+      text-align: center;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.3px;
+      line-height: 1.6;
+    }
+
+    .site-footer .creator {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
     /* ── RESPONSIVE ── */
     @media(max-width:600px) {
       .q-card {
@@ -1269,6 +1293,11 @@
       }
     ];
   </script>
+
+  <footer class="site-footer">
+    Created by <span class="creator">@subrata</span><br>
+    © 2026 All Rights Reserved
+  </footer>
 </body>
 
 </html>
