@@ -5,8 +5,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GH-300 GitHub Copilot Certification Exam</title>
+  <!-- Preload fonts: non-blocking, loads in parallel instead of render-blocking @import -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Sora:wght@300;400;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Sora:wght@300;400;600;700&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Sora:wght@300;400;600;700&display=swap"></noscript>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Sora:wght@300;400;600;700&display=swap');
 
     :root {
       --bg: #0d1117;
@@ -29,7 +34,7 @@
     }
 
     body {
-      font-family: 'Sora', sans-serif;
+      font-family: 'Sora', system-ui, -apple-system, sans-serif;
       font-size: 16px;
       background: var(--bg);
       color: var(--text);
@@ -784,6 +789,53 @@
         font-size: 17px;
       }
     }
+
+    /* ── LOADING OVERLAY ── */
+    .loading-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 300;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+    }
+
+    .loading-overlay.active {
+      display: flex;
+    }
+
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .loading-text {
+      font-size: 14px;
+      color: var(--muted);
+      letter-spacing: 0.5px;
+    }
+
+    .loading-error {
+      color: var(--danger);
+      font-size: 13px;
+      text-align: center;
+      max-width: 320px;
+    }
+
+    .loading-error button {
+      margin-top: 12px;
+    }
   </style>
 </head>
 
@@ -819,6 +871,12 @@
     <button class="btn btn-primary" id="start-btn" style="font-size:15px;padding:12px 32px;">
       Start Exam →
     </button>
+  </div>
+
+  <!-- ═══════════════ LOADING OVERLAY ═══════════════ -->
+  <div class="loading-overlay" id="loading-overlay">
+    <div class="loading-spinner" id="loading-spinner"></div>
+    <div class="loading-text" id="loading-text">Loading questions…</div>
   </div>
 
   <!-- ═══════════════ EXAM SCREEN ═══════════════ -->
@@ -935,19 +993,70 @@
     let timerSeconds = 40 * 60;
     let timerInterval = null;
     let startTime = null;
+    let questionsReady = false;         // true once JSON is loaded
+    let mapDotsCreated = false;         // true once map dots are built
+    const CACHE_KEY = 'gh300_questions'; // localStorage cache key
+    const CACHE_VER = 'v1';             // bump to invalidate cache
 
     // ════════════════════════════════════
-    //  LOAD JSON
+    //  LOAD JSON (with cache + retry)
     // ════════════════════════════════════
-    async function loadQuestions() {
+    async function fetchWithTimeout(url, ms = 8000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), ms);
       try {
-        const r = await fetch('questions.json');
-        ALL_QUESTIONS = await r.json();
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timer);
+        return res;
       } catch (e) {
-        // fallback: inline small set if fetch fails (e.g. file:// protocol)
-        console.warn('Could not fetch questions.json – using bundled fallback');
-        ALL_QUESTIONS = FALLBACK_QUESTIONS;
+        clearTimeout(timer);
+        throw e;
       }
+    }
+
+    async function loadQuestions() {
+      // 1. Try localStorage cache first (instant)
+      try {
+        const cached = localStorage.getItem(CACHE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed.ver === CACHE_VER && Array.isArray(parsed.data) && parsed.data.length > 0) {
+            ALL_QUESTIONS = parsed.data;
+            questionsReady = true;
+            // Refresh cache in background (non-blocking)
+            fetchAndCache().catch(() => {});
+            return;
+          }
+        }
+      } catch (_) { /* cache miss / parse error – continue to fetch */ }
+
+      // 2. Fetch from network (with 1 retry)
+      await fetchAndCache();
+    }
+
+    async function fetchAndCache() {
+      let lastError;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const r = await fetchWithTimeout('questions.json');
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const data = await r.json();
+          ALL_QUESTIONS = data;
+          questionsReady = true;
+          // Save to cache
+          try {
+            localStorage.setItem(CACHE_KEY, JSON.stringify({ ver: CACHE_VER, data }));
+          } catch (_) { /* quota exceeded – ignore */ }
+          return;
+        } catch (e) {
+          lastError = e;
+          if (attempt === 0) await new Promise(r => setTimeout(r, 500)); // brief pause before retry
+        }
+      }
+      // Both attempts failed — use fallback
+      console.warn('Could not fetch questions.json – using bundled fallback', lastError);
+      ALL_QUESTIONS = FALLBACK_QUESTIONS;
+      questionsReady = true;
     }
 
     // ════════════════════════════════════
@@ -1071,7 +1180,7 @@
       document.getElementById('prev-btn').disabled = current === 0;
       document.getElementById('next-btn').textContent = current === questions.length - 1 ? 'Finish →' : 'Next →';
 
-      // nav map
+      // nav map (optimized — update classes only, don't rebuild DOM)
       updateMap();
     }
 
@@ -1102,13 +1211,29 @@
       render();
     }
 
-    function updateMap() {
+    // ── Optimized question map: create dots once, update classes only ──
+    function buildMapDots() {
       const grid = document.getElementById('q-map-grid');
       grid.innerHTML = '';
-      questions.forEach((q, idx) => {
+      questions.forEach((_, idx) => {
         const dot = document.createElement('div');
         dot.className = 'q-dot';
         dot.textContent = idx + 1;
+        dot.dataset.idx = idx;
+        dot.addEventListener('click', () => { current = idx; render(); });
+        grid.appendChild(dot);
+      });
+      mapDotsCreated = true;
+    }
+
+    function updateMap() {
+      if (!mapDotsCreated) { buildMapDots(); return; }
+      const dots = document.getElementById('q-map-grid').children;
+      for (let idx = 0; idx < questions.length; idx++) {
+        const dot = dots[idx];
+        const q = questions[idx];
+        // Reset all state classes
+        dot.classList.remove('current', 'answered', 'correct-dot', 'wrong-dot');
         dot.title = `Q${idx + 1}${flagged.has(idx) ? ' 🚩' : ''}`;
 
         if (submitted || checked[idx]) {
@@ -1121,10 +1246,7 @@
           if (idx === current) dot.classList.add('current');
           else if (answers[idx] && answers[idx].size > 0) dot.classList.add('answered');
         }
-
-        dot.addEventListener('click', () => { current = idx; render(); });
-        grid.appendChild(dot);
-      });
+      }
     }
 
     // ════════════════════════════════════
@@ -1166,6 +1288,19 @@
 
     function openModal(id) { document.getElementById(id).classList.add('active'); }
     function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+    // ════════════════════════════════════
+    //  LOADING OVERLAY
+    // ════════════════════════════════════
+    function showLoading(msg) {
+      const overlay = document.getElementById('loading-overlay');
+      document.getElementById('loading-text').textContent = msg || 'Loading questions…';
+      document.getElementById('loading-spinner').style.display = '';
+      overlay.classList.add('active');
+    }
+    function hideLoading() {
+      document.getElementById('loading-overlay').classList.remove('active');
+    }
 
     // ════════════════════════════════════
     //  FINALIZE
@@ -1260,17 +1395,37 @@
     }
 
     // ════════════════════════════════════
+    //  PRELOAD on page load (don't wait for Start click)
+    // ════════════════════════════════════
+    document.addEventListener('DOMContentLoaded', () => {
+      loadQuestions(); // fire-and-forget — data loads while user reads the start screen
+    });
+
+    // ════════════════════════════════════
     //  START
     // ════════════════════════════════════
     document.getElementById('start-btn').addEventListener('click', async () => {
       document.getElementById('start-screen').style.display = 'none';
-      await loadQuestions();
+
+      // If questions haven't loaded yet (slow connection), show loading overlay
+      if (!questionsReady) {
+        showLoading('Loading questions…');
+        // Poll until ready (checked every 100ms)
+        await new Promise(resolve => {
+          const check = setInterval(() => {
+            if (questionsReady) { clearInterval(check); resolve(); }
+          }, 100);
+        });
+        hideLoading();
+      }
+
       pickQuestions();
       answers = {};
       checked = {};
       flagged = new Set();
       current = 0;
       submitted = false;
+      mapDotsCreated = false;
       timerSeconds = 40 * 60;
       document.getElementById('exam-screen').style.display = 'block';
       render();
