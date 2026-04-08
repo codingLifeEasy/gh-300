@@ -846,16 +846,16 @@
     <div class="start-icon">🎯</div>
     <h1>GH-300 Practice Exam</h1>
     <p>GitHub Copilot Fundamentals &amp; Responsible AI<br>
-      50 randomized questions per session · 40 minute timer<br>
+      All questions loaded per session · 60 minute timer<br>
       Passing score: 70%</p>
 
     <div class="start-meta">
       <div class="meta-item">
-        <span class="meta-val">50</span>
+        <span class="meta-val" id="meta-q-count">―</span>
         <div class="meta-lbl">Questions</div>
       </div>
       <div class="meta-item">
-        <span class="meta-val">40:00</span>
+        <span class="meta-val">60:00</span>
         <div class="meta-lbl">Time Limit</div>
       </div>
       <div class="meta-item">
@@ -885,12 +885,12 @@
       <div class="logo">GH<span>-300</span> · Practice Exam</div>
       <div class="header-right">
         <div class="progress-wrap">
-          <span id="progress-label">0 / 50</span>
+          <span id="progress-label">0 / ―</span>
           <div class="progress-bar-outer">
             <div class="progress-bar-inner" id="progress-bar" style="width:0%"></div>
           </div>
         </div>
-        <div id="timer-box">40:00</div>
+        <div id="timer-box">60:00</div>
         <button class="btn btn-outline" id="submit-btn" style="color:#f85149;border-color:#f85149">Submit Exam</button>
       </div>
     </header>
@@ -972,7 +972,7 @@
   <div class="modal-overlay" id="timeout-modal">
     <div class="modal">
       <h2>⏰ Time's Up!</h2>
-      <p>Your 40 minutes are over. Your exam has been automatically submitted.</p>
+      <p>Your 60 minutes are over. Your exam has been automatically submitted.</p>
       <div class="modal-btns">
         <button class="btn btn-primary" onclick="finalizeExam()">See Results</button>
       </div>
@@ -984,13 +984,13 @@
     //  STATE
     // ════════════════════════════════════
     let ALL_QUESTIONS = [];
-    let questions = [];   // 50 selected
+    let questions = [];   // all questions
     let current = 0;
     let answers = {};   // index → Set of option indices
     let flagged = new Set();
     let checked = {};   // index → true (individually checked/revealed)
     let submitted = false;
-    let timerSeconds = 40 * 60;
+    let timerSeconds = 60 * 60;
     let timerInterval = null;
     let startTime = null;
     let questionsReady = false;         // true once JSON is loaded
@@ -1014,6 +1014,11 @@
       }
     }
 
+    function updateQuestionCount() {
+      const el = document.getElementById('meta-q-count');
+      if (el) el.textContent = ALL_QUESTIONS.length;
+    }
+
     async function loadQuestions() {
       // 1. Try localStorage cache first (instant)
       try {
@@ -1023,6 +1028,7 @@
           if (parsed.ver === CACHE_VER && Array.isArray(parsed.data) && parsed.data.length > 0) {
             ALL_QUESTIONS = parsed.data;
             questionsReady = true;
+            updateQuestionCount();
             // Refresh cache in background (non-blocking)
             fetchAndCache().catch(() => {});
             return;
@@ -1043,6 +1049,7 @@
           const data = await r.json();
           ALL_QUESTIONS = data;
           questionsReady = true;
+          updateQuestionCount();
           // Save to cache
           try {
             localStorage.setItem(CACHE_KEY, JSON.stringify({ ver: CACHE_VER, data }));
@@ -1060,7 +1067,7 @@
     }
 
     // ════════════════════════════════════
-    //  SHUFFLE & PICK 50
+    //  SHUFFLE ALL QUESTIONS
     // ════════════════════════════════════
     function shuffle(arr) {
       const a = [...arr];
@@ -1072,8 +1079,7 @@
     }
 
     function pickQuestions() {
-      const pool = shuffle(ALL_QUESTIONS);
-      questions = pool.slice(0, Math.min(50, pool.length));
+      questions = shuffle(ALL_QUESTIONS);
     }
 
     // ════════════════════════════════════
@@ -1102,7 +1108,7 @@
     }
 
     function getElapsed() {
-      const total = 40 * 60;
+      const total = 60 * 60;
       const remaining = timerSeconds;
       const used = total - remaining;
       const m = Math.floor(used / 60);
@@ -1426,7 +1432,7 @@
       current = 0;
       submitted = false;
       mapDotsCreated = false;
-      timerSeconds = 40 * 60;
+      timerSeconds = 60 * 60;
       document.getElementById('exam-screen').style.display = 'block';
       render();
       startTimer();
